@@ -1,6 +1,23 @@
 # 영상편집기 (Auto Video Editor)
 
-CapCut처럼 영상을 넣으면 **무음 구간 자동 컷 + 자동 자막 생성 + 템플릿 기반 자동 조립**까지 한 번에 처리하는 Python CLI 도구입니다.
+CapCut처럼 영상을 넣으면 **무음 구간 자동 컷 + 자동 자막 생성 + 템플릿 기반 자동 조립**까지 한 번에 처리하는 프로그램입니다. GUI 앱과 CLI를 모두 제공합니다.
+
+## GUI로 실행 (추천)
+
+설치가 끝난 뒤에는 [run_gui.bat](run_gui.bat)을 더블클릭하면 바로 실행됩니다 (터미널 창도 뜨지 않습니다).
+
+터미널에서 직접 실행하려면:
+
+```bash
+venv\Scripts\python app.py
+```
+
+터미널 명령어나 JSON 파일을 직접 건드릴 필요 없이:
+
+1. **파일 추가** 버튼으로 영상 선택 (여러 개 가능, 폴더째 추가도 가능)
+2. **템플릿** 선택 (16:9 / 9:16), 무음 컷 민감도·자막·배경음악 옵션을 화면에서 조절
+3. **실행** 버튼 클릭 → 진행 상황이 로그 창에 실시간으로 표시됨
+4. 완료되면 **결과 폴더 열기** 버튼으로 바로 확인
 
 ## 엔진 두 가지
 
@@ -22,7 +39,9 @@ venv\Scripts\pip install -r requirements.txt
 
 ffmpeg는 `imageio-ffmpeg` 패키지가 자동으로 내려받아 쓰기 때문에 별도 설치가 필요 없습니다. `capcut` 엔진을 쓰려면 PC에 CapCut이 설치되어 있어야 합니다.
 
-## 사용법 (capcut 엔진, 기본값)
+## CLI로 실행 (자동화·배치 처리용)
+
+### 사용법 (capcut 엔진, 기본값)
 
 ```bash
 venv\Scripts\python main.py --input clip.mp4 --template templates/shorts.json --draft-name my_video
@@ -36,7 +55,7 @@ venv\Scripts\python main.py --input clip.mp4 --template templates/shorts.json --
 venv\Scripts\python main.py --input clip.mp4 --template templates/shorts.json --draft-name my_video --drafts-folder "C:\Users\<사용자명>\AppData\Local\CapCut\User Data\Projects\com.lveditor.draft"
 ```
 
-## 사용법 (moviepy 엔진, CapCut 없이 완전 자동)
+### 사용법 (moviepy 엔진, CapCut 없이 완전 자동)
 
 ```bash
 venv\Scripts\python main.py --input clip.mp4 --template templates/shorts.json --engine moviepy --output output/final.mp4

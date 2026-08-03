@@ -2,3 +2,5 @@ moviepy>=2.1.2
 imageio-ffmpeg>=0.5.1
 faster-whisper>=1.0.0
 numpy>=2.0
+pycapcut>=0.0.3
+pymediainfo>=6.0

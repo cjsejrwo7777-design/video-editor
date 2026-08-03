@@ -5,7 +5,7 @@ A simple project for experimenting with video editing tools and scripts.
 ## About
 
 This repository is a starting point for building a lightweight video editing workflow.
-It is a place to collect scripts, notes, and small utilities tha help with trimming,
+It is a place to collect scripts, notes, and small utilities that help with trimming,
 merging, and converting video clips.
 
 ## Getting Started

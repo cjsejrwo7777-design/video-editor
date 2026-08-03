@@ -198,6 +198,76 @@ def _add_bgm_track(script, music_cfg, total_duration_us: int) -> None:
         is_first = False
 
 
+def _generate_cover(analyzed: list[dict], draft_dir: str, resolution: tuple[int, int]) -> None:
+    """드래프트의 첫 장면으로 썸네일(draft_cover.jpg)을 만든다.
+
+    CapCut 홈 화면은 이 파일이 있어야 미리보기 이미지를 보여준다.
+    없으면 프로젝트가 빈 드래프트처럼 보여서 눈에 안 띄기 쉽다.
+    """
+    import imageio_ffmpeg
+
+    first = next((item for item in analyzed if item["segments"]), None)
+    if first is None:
+        return
+
+    frame_time = first["segments"][0][0] + 0.1
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    cover_path = os.path.join(draft_dir, "draft_cover.jpg")
+    width, height = resolution
+    import subprocess
+
+    subprocess.run(
+        [
+            ffmpeg, "-y", "-ss", str(frame_time), "-i", first["path"],
+            "-frames:v", "1", "-vf", f"scale={width}:{height}",
+            cover_path,
+        ],
+        capture_output=True,
+    )
+
+
+def _register_in_root_index(drafts_folder: str, draft_name: str, total_duration_us: int) -> None:
+    """CapCut의 프로젝트 목록 인덱스(root_meta_info.json)에 실제 길이/썸네일을 반영한다.
+
+    draft_content.json만 만들어서는 CapCut이 처음 발견할 때 duration=0인 채로
+    등록해버려서 홈 화면에 빈 프로젝트처럼(썸네일 없음, 0:00) 보인다.
+    우리가 만든 항목만 골라 안전하게 갱신한다(다른 프로젝트는 건드리지 않음).
+    """
+    import json
+    import time
+
+    index_path = os.path.join(drafts_folder, "root_meta_info.json")
+    if not os.path.exists(index_path):
+        return
+
+    target_fold_path = os.path.join(drafts_folder, draft_name).replace("\\", "/")
+
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    changed = False
+    for item in data.get("all_draft_store", []):
+        if item.get("draft_fold_path", "").replace("\\", "/") != target_fold_path:
+            continue
+        item["tm_duration"] = total_duration_us
+        item["tm_draft_modified"] = int(time.time() * 1_000_000)
+        item["draft_cover"] = os.path.join(drafts_folder, draft_name, "draft_cover.jpg")
+        changed = True
+        break
+
+    if not changed:
+        return
+
+    # 원자적 쓰기: 임시 파일에 먼저 쓰고 교체 (CapCut이 동시에 쓰다가 깨지는 것 방지)
+    tmp_path = index_path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp_path, index_path)
+
+
 def build_draft(
     input_paths: list[str],
     template: Template,
@@ -262,5 +332,10 @@ def build_draft(
         report("[4/4] 자막 생성 건너뜀")
 
     script.save()
+
+    draft_dir = os.path.join(drafts_folder, draft_name)
+    _generate_cover(analyzed, draft_dir, template.resolution)
+    _register_in_root_index(drafts_folder, draft_name, cursor_us)
+
     report(f"완료: CapCut 드래프트 '{draft_name}' 저장됨 ({drafts_folder})")
     return script

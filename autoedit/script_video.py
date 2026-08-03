@@ -49,6 +49,53 @@ def _group_cues_by_image(image_paths: list[str], cues: list[NarrationCue]) -> li
     return groups
 
 
+def _match_images_by_keyword(image_paths: list[str], cues: list[NarrationCue]) -> list[tuple[str, float, float]]:
+    """사진 파일명(확장자 제외)을 키워드로 보고, 그 단어가 포함된 대본 줄이 나올 때 그 사진을 배치한다.
+
+    예) '동물.jpg' -> 대본에 "동물"이 들어간 줄이 나오면 그 사진이 나타남.
+    어떤 줄에도 키워드가 안 걸리면 바로 이전에 매칭됐던 사진을 이어서 사용한다.
+    """
+    if not cues or not image_paths:
+        return []
+
+    keyword_pairs = [(os.path.splitext(os.path.basename(p))[0], p) for p in image_paths]
+
+    assigned: list[str | None] = []
+    last_matched: str | None = None
+    for cue in cues:
+        matched: str | None = None
+        for keyword, img in keyword_pairs:
+            if keyword and keyword in cue.text:
+                matched = img
+                break
+        if matched is None:
+            matched = last_matched
+        else:
+            last_matched = matched
+        assigned.append(matched)
+
+    # 맨 앞부터 매칭이 하나도 안 됐다면, 나중에 처음 매칭된 사진으로 앞부분을 채운다.
+    first_idx = next((i for i, a in enumerate(assigned) if a is not None), None)
+    if first_idx is not None:
+        for i in range(first_idx):
+            assigned[i] = assigned[first_idx]
+    else:
+        assigned = [image_paths[0]] * len(cues)
+
+    # 연속으로 같은 사진이 배정된 줄들을 하나의 구간으로 묶는다.
+    groups: list[tuple[str, float, float]] = []
+    i = 0
+    n = len(cues)
+    while i < n:
+        img = assigned[i]
+        j = i
+        while j + 1 < n and assigned[j + 1] == img:
+            j += 1
+        groups.append((img, cues[i].start, cues[j].end))
+        i = j + 1
+    return groups
+
+
 def _generate_image_cover(image_path: str | None, draft_dir: str, resolution: tuple[int, int]) -> None:
     if not image_path:
         return
@@ -75,6 +122,7 @@ def build_script_draft(
     zoom_ratio: float = 1.12,
     transition_name: str | None = "叠化",
     transition_ms: int = 400,
+    match_mode: str = "order",
     generate_captions: bool = True,
     allow_replace: bool = True,
     progress_cb=None,
@@ -124,7 +172,10 @@ def build_script_draft(
     total_duration_us = int(round(cues[-1].end * 1_000_000))
 
     report("[2/5] 사진을 대본 타이밍에 맞춰 배치 중...")
-    groups = _group_cues_by_image(image_paths, cues)
+    if match_mode == "keyword":
+        groups = _match_images_by_keyword(image_paths, cues)
+    else:
+        groups = _group_cues_by_image(image_paths, cues)
 
     script.add_track(TrackType.video, "video")
     script.add_track(TrackType.audio, "나레이션")

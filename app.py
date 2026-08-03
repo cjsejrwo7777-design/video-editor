@@ -459,12 +459,33 @@ class AutoEditApp:
         self.sv_script_text = tk.Text(script_frame, height=8, wrap="word")
         self.sv_script_text.pack(fill="both", expand=True, padx=8, pady=8)
 
-        img_frame = ttk.LabelFrame(parent, text="2. 사진 (대본 순서와 같은 순서로 추가 · 위/아래로 순서 조정 가능)")
+        img_frame = ttk.LabelFrame(parent, text="2. 사진")
         img_frame.pack(fill="x", **pad)
-        self.sv_image_listbox = tk.Listbox(img_frame, height=5, selectmode="extended")
+
+        mode_row = ttk.Frame(img_frame)
+        mode_row.pack(fill="x", padx=8, pady=(8, 0))
+        self.sv_match_mode_var = tk.StringVar(value="order")
+        ttk.Radiobutton(
+            mode_row, text="순서대로 (번호)", variable=self.sv_match_mode_var, value="order",
+            command=self._sv_on_match_mode_change,
+        ).pack(side="left")
+        ttk.Radiobutton(
+            mode_row, text="파일명 매칭 (키워드)", variable=self.sv_match_mode_var, value="keyword",
+            command=self._sv_on_match_mode_change,
+        ).pack(side="left", padx=(12, 0))
+
+        self.sv_match_mode_hint_var = tk.StringVar()
+        ttk.Label(
+            img_frame, textvariable=self.sv_match_mode_hint_var, foreground="#555", wraplength=760, justify="left",
+        ).pack(fill="x", padx=8, pady=(2, 6))
+        self._sv_on_match_mode_change()
+
+        list_row = ttk.Frame(img_frame)
+        list_row.pack(fill="x")
+        self.sv_image_listbox = tk.Listbox(list_row, height=5, selectmode="extended")
         self.sv_image_listbox.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
 
-        img_btn_col = ttk.Frame(img_frame)
+        img_btn_col = ttk.Frame(list_row)
         img_btn_col.pack(side="left", fill="y", padx=8, pady=8)
         ttk.Button(img_btn_col, text="사진 추가", command=self._sv_add_images).pack(fill="x", pady=2)
         ttk.Button(img_btn_col, text="폴더 추가", command=self._sv_add_image_folder).pack(fill="x", pady=2)
@@ -548,6 +569,18 @@ class AutoEditApp:
         self.sv_log_text.pack(fill="both", expand=True, padx=8, pady=8)
 
     # ---------------------------------------------------------------- 사진 목록
+    def _sv_on_match_mode_change(self) -> None:
+        if self.sv_match_mode_var.get() == "keyword":
+            self.sv_match_mode_hint_var.set(
+                "사진 파일명(확장자 제외)이 대본 문장에 그대로 포함되어 있으면, 그 문장이 나올 때 해당 사진이 자동으로 나타납니다. "
+                "예) 파일명을 '동물.jpg'로 하면 → 대본에 \"동물\"이 들어간 문장에서 그 사진이 나옵니다. "
+                "추가 순서는 상관없고, 매칭되는 문장이 없으면 바로 이전에 매칭됐던 사진이 이어서 나옵니다."
+            )
+        else:
+            self.sv_match_mode_hint_var.set(
+                "사진을 대본 순서와 똑같이 추가해주세요. 순서가 안 맞으면 아래 목록에서 위로/아래로 버튼으로 조정할 수 있습니다."
+            )
+
     def _sv_add_images(self) -> None:
         paths = filedialog.askopenfilenames(
             title="사진 선택 (대본 순서와 같은 순서로 선택해주세요)",
@@ -689,6 +722,7 @@ class AutoEditApp:
         zoom_ratio = self.sv_zoom_var.get()
         transition_name = "叠化" if self.sv_transition_var.get() else None
         generate_captions = self.sv_captions_enabled_var.get()
+        match_mode = self.sv_match_mode_var.get()
 
         self._sv_clear_log()
         self.sv_run_btn.config(state="disabled")
@@ -697,7 +731,10 @@ class AutoEditApp:
 
         self.sv_worker = threading.Thread(
             target=self._sv_run_pipeline,
-            args=(lines, image_paths, template, drafts_folder, draft_name, voice_code, zoom_ratio, transition_name, generate_captions),
+            args=(
+                lines, image_paths, template, drafts_folder, draft_name,
+                voice_code, zoom_ratio, transition_name, match_mode, generate_captions,
+            ),
             daemon=True,
         )
         self.sv_worker.start()
@@ -712,6 +749,7 @@ class AutoEditApp:
         voice_code: str,
         zoom_ratio: float,
         transition_name: str | None,
+        match_mode: str,
         generate_captions: bool,
     ) -> None:
         def progress(msg: str) -> None:
@@ -729,6 +767,7 @@ class AutoEditApp:
                 voice=voice_code,
                 zoom_ratio=zoom_ratio,
                 transition_name=transition_name,
+                match_mode=match_mode,
                 generate_captions=generate_captions,
                 allow_replace=True,
                 progress_cb=progress,

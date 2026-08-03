@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if not exist venv\Scripts\pythonw.exe (
-    echo venv가 없습니다. 먼저 README의 설치 안내를 따라주세요.
+    echo [ERROR] venv not found. Please run the setup steps in README.md first.
     pause
     exit /b 1
 )

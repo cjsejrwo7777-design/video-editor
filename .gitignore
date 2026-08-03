@@ -1,0 +1,9 @@
+venv/
+output/
+temp/
+*.wav
+__pycache__/
+*.pyc
+.claude/
+test_assets/speech.wav
+test_assets/test_input.mp4

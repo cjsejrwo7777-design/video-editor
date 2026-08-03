@@ -1,0 +1,35 @@
+{
+  "name": "shorts_9x16",
+  "resolution": [1080, 1920],
+  "fit": "cover",
+  "fps": 30,
+  "silence": {
+    "thresh_db": -35,
+    "min_silence_ms": 400,
+    "min_speech_ms": 200,
+    "pad_ms": 100,
+    "crossfade_ms": 40
+  },
+  "captions": {
+    "enabled": true,
+    "language": "ko",
+    "model_size": "small",
+    "font": "C:\\Windows\\Fonts\\malgunbd.ttf",
+    "font_size": 66,
+    "color": "white",
+    "stroke_color": "black",
+    "stroke_width": 4,
+    "position": "bottom",
+    "margin": 220,
+    "max_chars_per_line": 14,
+    "max_lines": 2
+  },
+  "music": {
+    "enabled": false,
+    "path": null,
+    "volume": 0.15,
+    "duck_volume": 0.06
+  },
+  "intro": null,
+  "outro": null
+}

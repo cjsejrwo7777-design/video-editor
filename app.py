@@ -371,7 +371,9 @@ class AutoEditApp:
             self.moviepy_frame.grid(row=0, column=2, rowspan=2, sticky="w", padx=16)
 
     def _browse_drafts_folder(self) -> None:
-        folder = filedialog.askdirectory(title="CapCut 드래프트 폴더 선택")
+        folder = filedialog.askdirectory(
+            title="CapCut 드래프트 폴더 선택", initialdir=self.drafts_folder_var.get() or self._detect_drafts_folder(),
+        )
         if folder:
             self.drafts_folder_var.set(folder)
 
@@ -649,16 +651,37 @@ class AutoEditApp:
         self.sv_music_volume_var = tk.DoubleVar(value=0.15)
         self._add_slider(music_frame, "배경음악 볼륨", self.sv_music_volume_var, 0.0, 1.0, row=1, fmt="{:.2f}")
 
-        save_frame = ttk.LabelFrame(parent, text="8. 저장 위치")
+        save_frame = ttk.LabelFrame(parent, text="8. 저장 방식")
         save_frame.pack(fill="x", **pad)
-        ttk.Label(save_frame, text="드래프트 이름:").grid(row=0, column=0, sticky="w", padx=8, pady=2)
-        self.sv_draft_name_var = tk.StringVar()
-        ttk.Entry(save_frame, textvariable=self.sv_draft_name_var, width=26).grid(row=0, column=1, padx=4, pady=2, sticky="w")
 
-        ttk.Label(save_frame, text="드래프트 폴더:").grid(row=1, column=0, sticky="w", padx=8, pady=2)
+        self.sv_engine_var = tk.StringVar(value="mp4")
+        ttk.Radiobutton(
+            save_frame, text="MP4로 바로 만들기 (추천 · 더블클릭으로 바로 재생)",
+            variable=self.sv_engine_var, value="mp4", command=self._sv_on_engine_change,
+        ).grid(row=0, column=0, sticky="w", padx=8, pady=2, columnspan=2)
+        ttk.Radiobutton(
+            save_frame, text="CapCut 드래프트 생성 (고급 · CapCut에서 더 다듬을 수 있음)",
+            variable=self.sv_engine_var, value="capcut", command=self._sv_on_engine_change,
+        ).grid(row=1, column=0, sticky="w", padx=8, pady=2, columnspan=2)
+
+        self.sv_mp4_frame = ttk.Frame(save_frame)
+        ttk.Label(self.sv_mp4_frame, text="출력 파일:").grid(row=0, column=0, sticky="w")
+        self.sv_output_path_var = tk.StringVar()
+        ttk.Entry(self.sv_mp4_frame, textvariable=self.sv_output_path_var, width=46).grid(row=0, column=1, padx=4, pady=2)
+        ttk.Button(self.sv_mp4_frame, text="다른 이름으로 저장", command=self._sv_browse_output).grid(row=0, column=2, padx=4)
+
+        self.sv_capcut_frame = ttk.Frame(save_frame)
+        ttk.Label(self.sv_capcut_frame, text="드래프트 이름:").grid(row=0, column=0, sticky="w")
+        self.sv_draft_name_var = tk.StringVar()
+        ttk.Entry(self.sv_capcut_frame, textvariable=self.sv_draft_name_var, width=26).grid(row=0, column=1, padx=4, pady=2, sticky="w")
+
+        ttk.Label(self.sv_capcut_frame, text="드래프트 폴더:").grid(row=1, column=0, sticky="w")
         self.sv_drafts_folder_var = tk.StringVar(value=self._detect_drafts_folder())
-        ttk.Entry(save_frame, textvariable=self.sv_drafts_folder_var, width=46).grid(row=1, column=1, padx=4, pady=2, sticky="w")
-        ttk.Button(save_frame, text="찾아보기", command=self._sv_browse_drafts_folder).grid(row=1, column=2, padx=4)
+        ttk.Entry(self.sv_capcut_frame, textvariable=self.sv_drafts_folder_var, width=46).grid(row=1, column=1, padx=4, pady=2, sticky="w")
+        ttk.Button(self.sv_capcut_frame, text="찾아보기", command=self._sv_browse_drafts_folder).grid(row=1, column=2, padx=4)
+
+        self.sv_mp4_frame.grid(row=0, column=2, rowspan=2, sticky="w", padx=16)
+        self._sv_on_engine_change()
 
         run_frame = ttk.Frame(parent)
         run_frame.pack(fill="x", **pad)
@@ -777,8 +800,26 @@ class AutoEditApp:
             self.sv_music_path_var.set(template.music.path)
         self.sv_music_volume_var.set(template.music.volume)
 
+    def _sv_on_engine_change(self) -> None:
+        if self.sv_engine_var.get() == "mp4":
+            self.sv_capcut_frame.grid_forget()
+            self.sv_mp4_frame.grid(row=0, column=2, rowspan=2, sticky="w", padx=16)
+        else:
+            self.sv_mp4_frame.grid_forget()
+            self.sv_capcut_frame.grid(row=0, column=2, rowspan=2, sticky="w", padx=16)
+
+    def _sv_browse_output(self) -> None:
+        path = filedialog.asksaveasfilename(
+            title="출력 파일 저장 위치", defaultextension=".mp4",
+            filetypes=[("MP4 영상", "*.mp4")],
+        )
+        if path:
+            self.sv_output_path_var.set(path)
+
     def _sv_browse_drafts_folder(self) -> None:
-        folder = filedialog.askdirectory(title="CapCut 드래프트 폴더 선택")
+        folder = filedialog.askdirectory(
+            title="CapCut 드래프트 폴더 선택", initialdir=self.sv_drafts_folder_var.get() or self._detect_drafts_folder(),
+        )
         if folder:
             self.sv_drafts_folder_var.set(folder)
 
@@ -837,8 +878,15 @@ class AutoEditApp:
         if not self.sv_template_var.get():
             messagebox.showwarning("템플릿 필요", "템플릿을 선택해주세요.")
             return
+
+        engine = self.sv_engine_var.get()
+        output_path = self.sv_output_path_var.get().strip()
         drafts_folder = self.sv_drafts_folder_var.get().strip()
-        if not drafts_folder:
+        draft_name = self.sv_draft_name_var.get().strip() or "대본영상"
+        if engine == "mp4" and not output_path:
+            messagebox.showwarning("출력 경로 필요", "MP4 출력 파일 경로를 지정해주세요.")
+            return
+        if engine == "capcut" and not drafts_folder:
             messagebox.showwarning(
                 "드래프트 폴더 필요",
                 "CapCut 드래프트 폴더를 찾지 못했습니다. 직접 찾아보기로 지정해주세요.",
@@ -858,11 +906,9 @@ class AutoEditApp:
         voice_code = next(v["voice"] for v in VOICE_OPTIONS if v["id"] == voice_id)
 
         image_paths = list(self.sv_image_paths)
-        draft_name = self.sv_draft_name_var.get().strip() or "대본영상"
         zoom_ratio = self.sv_zoom_var.get()
         transition_name = "叠化" if self.sv_transition_var.get() else None
         generate_captions = self.sv_captions_enabled_var.get()
-        match_mode = self.sv_match_mode_var.get()
 
         self._sv_clear_log()
         self.sv_run_btn.config(state="disabled")
@@ -872,7 +918,7 @@ class AutoEditApp:
         self.sv_worker = threading.Thread(
             target=self._sv_run_pipeline,
             args=(
-                lines, image_paths, template, drafts_folder, draft_name,
+                engine, lines, image_paths, template, drafts_folder, draft_name, output_path,
                 voice_code, zoom_ratio, transition_name, match_mode, pexels_api_key, generate_captions,
             ),
             daemon=True,
@@ -881,11 +927,13 @@ class AutoEditApp:
 
     def _sv_run_pipeline(
         self,
+        engine: str,
         lines: list[str],
         image_paths: list[str],
         template: Template,
         drafts_folder: str,
         draft_name: str,
+        output_path: str,
         voice_code: str,
         zoom_ratio: float,
         transition_name: str | None,
@@ -897,25 +945,43 @@ class AutoEditApp:
             self.sv_log_queue.put(msg)
 
         try:
-            from autoedit.script_video import build_script_draft
+            if engine == "mp4":
+                from autoedit.script_video_mp4 import render_script_video
 
-            build_script_draft(
-                lines=lines,
-                image_paths=image_paths,
-                template=template,
-                drafts_folder=drafts_folder,
-                draft_name=draft_name,
-                voice=voice_code,
-                zoom_ratio=zoom_ratio,
-                transition_name=transition_name,
-                match_mode=match_mode,
-                pexels_api_key=pexels_api_key,
-                generate_captions=generate_captions,
-                allow_replace=True,
-                progress_cb=progress,
-            )
-            self.sv_last_drafts_folder = os.path.join(drafts_folder, draft_name)
-            progress(f"\nCapCut에서 '{draft_name}' 드래프트를 열어 확인하세요.")
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                render_script_video(
+                    lines=lines,
+                    image_paths=image_paths,
+                    template=template,
+                    output_path=output_path,
+                    voice=voice_code,
+                    zoom_ratio=zoom_ratio,
+                    match_mode=match_mode,
+                    pexels_api_key=pexels_api_key,
+                    generate_captions=generate_captions,
+                    progress_cb=progress,
+                )
+                self.sv_last_drafts_folder = str(Path(output_path).parent)
+            else:
+                from autoedit.script_video import build_script_draft
+
+                build_script_draft(
+                    lines=lines,
+                    image_paths=image_paths,
+                    template=template,
+                    drafts_folder=drafts_folder,
+                    draft_name=draft_name,
+                    voice=voice_code,
+                    zoom_ratio=zoom_ratio,
+                    transition_name=transition_name,
+                    match_mode=match_mode,
+                    pexels_api_key=pexels_api_key,
+                    generate_captions=generate_captions,
+                    allow_replace=True,
+                    progress_cb=progress,
+                )
+                self.sv_last_drafts_folder = os.path.join(drafts_folder, draft_name)
+                progress(f"\nCapCut에서 '{draft_name}' 드래프트를 열어 확인하세요.")
             self.sv_log_queue.put("__DONE__")
         except Exception:
             self.sv_log_queue.put(traceback.format_exc())

@@ -49,6 +49,23 @@ def _group_cues_by_image(image_paths: list[str], cues: list[NarrationCue]) -> li
     return groups
 
 
+def _merge_consecutive_groups(
+    assigned: list[str], cues: list[NarrationCue],
+) -> list[tuple[str, float, float]]:
+    """줄마다 배정된 사진 목록에서, 연속으로 같은 사진이 배정된 줄들을 하나의 구간으로 묶는다."""
+    groups: list[tuple[str, float, float]] = []
+    i = 0
+    n = len(cues)
+    while i < n:
+        img = assigned[i]
+        j = i
+        while j + 1 < n and assigned[j + 1] == img:
+            j += 1
+        groups.append((img, cues[i].start, cues[j].end))
+        i = j + 1
+    return groups
+
+
 def _match_images_by_keyword(image_paths: list[str], cues: list[NarrationCue]) -> list[tuple[str, float, float]]:
     """사진 파일명(확장자 제외)을 키워드로 보고, 그 단어가 포함된 대본 줄이 나올 때 그 사진을 배치한다.
 
@@ -82,18 +99,49 @@ def _match_images_by_keyword(image_paths: list[str], cues: list[NarrationCue]) -
     else:
         assigned = [image_paths[0]] * len(cues)
 
-    # 연속으로 같은 사진이 배정된 줄들을 하나의 구간으로 묶는다.
-    groups: list[tuple[str, float, float]] = []
-    i = 0
-    n = len(cues)
-    while i < n:
-        img = assigned[i]
-        j = i
-        while j + 1 < n and assigned[j + 1] == img:
-            j += 1
-        groups.append((img, cues[i].start, cues[j].end))
-        i = j + 1
-    return groups
+    return _merge_consecutive_groups(assigned, cues)
+
+
+def _fetch_auto_stock_groups(
+    cues: list[NarrationCue], api_key: str, draft_dir: str, resolution: tuple[int, int], progress_cb=None,
+) -> list[tuple[str, float, float]]:
+    """대본 줄마다 Pexels에서 스톡 사진을 자동 검색·다운로드해서 배치한다."""
+    from . import stock_media
+
+    def report(msg: str) -> None:
+        if progress_cb:
+            progress_cb(msg)
+
+    width, height = resolution
+    orientation = "portrait" if height >= width else "landscape"
+
+    stock_dir = os.path.join(draft_dir, "stock_images")
+    os.makedirs(stock_dir, exist_ok=True)
+
+    assigned: list[str] = []
+    last_path: str | None = None
+    for i, cue in enumerate(cues, start=1):
+        dest_path = os.path.join(stock_dir, f"{i:03d}.jpg")
+        try:
+            found = stock_media.fetch_stock_photo(cue.text, api_key, dest_path, orientation=orientation)
+        except Exception as e:
+            if last_path is None:
+                raise
+            report(f"  사진 {i}/{len(cues)} 검색 실패({e}), 이전 사진으로 대체")
+            assigned.append(last_path)
+            continue
+
+        if found:
+            assigned.append(dest_path)
+            last_path = dest_path
+            report(f"  사진 {i}/{len(cues)} 검색 완료")
+        elif last_path is not None:
+            assigned.append(last_path)
+            report(f"  사진 {i}/{len(cues)} 검색 결과 없음, 이전 사진으로 대체")
+        else:
+            raise ValueError(f"'{cue.text}'에 맞는 사진을 찾지 못했습니다. 대본 표현을 바꿔서 다시 시도해보세요.")
+
+    return _merge_consecutive_groups(assigned, cues)
 
 
 def _generate_image_cover(image_path: str | None, draft_dir: str, resolution: tuple[int, int]) -> None:
@@ -123,11 +171,16 @@ def build_script_draft(
     transition_name: str | None = "叠化",
     transition_ms: int = 400,
     match_mode: str = "order",
+    pexels_api_key: str | None = None,
     generate_captions: bool = True,
     allow_replace: bool = True,
     progress_cb=None,
 ):
-    """대본+사진으로 CapCut 드래프트를 만들고 저장한다. 완성된 `ScriptFile`을 반환한다."""
+    """대본+사진으로 CapCut 드래프트를 만들고 저장한다. 완성된 `ScriptFile`을 반환한다.
+
+    match_mode="auto_stock" 이면 image_paths 없이도 Pexels에서 사진을 자동으로 찾아 채운다
+    (이 경우 pexels_api_key 필수).
+    """
     from pycapcut import (
         AudioMaterial,
         AudioSegment,
@@ -152,7 +205,10 @@ def build_script_draft(
     lines = [line.strip() for line in lines if line.strip()]
     if not lines:
         raise ValueError("대본이 비어 있습니다.")
-    if not image_paths:
+    if match_mode == "auto_stock":
+        if not pexels_api_key:
+            raise ValueError("자동 이미지 검색을 쓰려면 Pexels API 키가 필요합니다.")
+    elif not image_paths:
         raise ValueError("사진을 하나 이상 추가해주세요.")
 
     dfolder = DraftFolder(drafts_folder)
@@ -171,11 +227,15 @@ def build_script_draft(
 
     total_duration_us = int(round(cues[-1].end * 1_000_000))
 
-    report("[2/5] 사진을 대본 타이밍에 맞춰 배치 중...")
-    if match_mode == "keyword":
-        groups = _match_images_by_keyword(image_paths, cues)
+    if match_mode == "auto_stock":
+        report("[2/5] 대본에 맞는 사진을 자동으로 검색하는 중 (Pexels)...")
+        groups = _fetch_auto_stock_groups(cues, pexels_api_key, draft_dir, template.resolution, progress_cb=report)
     else:
-        groups = _group_cues_by_image(image_paths, cues)
+        report("[2/5] 사진을 대본 타이밍에 맞춰 배치 중...")
+        if match_mode == "keyword":
+            groups = _match_images_by_keyword(image_paths, cues)
+        else:
+            groups = _group_cues_by_image(image_paths, cues)
 
     script.add_track(TrackType.video, "video")
     script.add_track(TrackType.audio, "나레이션")
@@ -243,7 +303,7 @@ def build_script_draft(
 
     script.save()
 
-    _generate_image_cover(image_paths[0], draft_dir, template.resolution)
+    _generate_image_cover(groups[0][0] if groups else None, draft_dir, template.resolution)
     _register_in_root_index(drafts_folder, draft_name, total_duration_us)
 
     report(f"완료: CapCut 드래프트 '{draft_name}' 저장됨 ({drafts_folder})")

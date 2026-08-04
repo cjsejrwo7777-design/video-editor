@@ -5,3 +5,5 @@ numpy>=2.0
 pycapcut>=0.0.3
 pymediainfo>=6.0
 edge-tts>=6.1
+deep-translator>=1.11
+requests>=2.31

@@ -28,6 +28,8 @@ VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+CONFIG_PATH = Path(__file__).parent / "autoedit_config.json"
+PEXELS_SIGNUP_URL = "https://www.pexels.com/api/"
 
 
 class AutoEditApp:
@@ -156,6 +158,30 @@ class AutoEditApp:
             return find_default_drafts_folder() or ""
         except Exception:
             return ""
+
+    def _load_pexels_key(self) -> str:
+        try:
+            import json
+
+            with open(CONFIG_PATH, encoding="utf-8") as f:
+                return json.load(f).get("pexels_api_key", "")
+        except Exception:
+            return ""
+
+    def _save_pexels_key(self) -> None:
+        try:
+            import json
+
+            key = self.sv_pexels_key_var.get().strip()
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump({"pexels_api_key": key}, f)
+        except Exception:
+            pass
+
+    def _sv_open_pexels_signup(self) -> None:
+        import webbrowser
+
+        webbrowser.open(PEXELS_SIGNUP_URL)
 
     # =================================================================
     # 영상 편집 탭
@@ -535,19 +561,21 @@ class AutoEditApp:
             mode_row, text="파일명 매칭 (키워드)", variable=self.sv_match_mode_var, value="keyword",
             command=self._sv_on_match_mode_change,
         ).pack(side="left", padx=(12, 0))
+        ttk.Radiobutton(
+            mode_row, text="자동 이미지 검색 (사진 없이, 무료 스톡)", variable=self.sv_match_mode_var, value="auto_stock",
+            command=self._sv_on_match_mode_change,
+        ).pack(side="left", padx=(12, 0))
 
         self.sv_match_mode_hint_var = tk.StringVar()
         ttk.Label(
             img_frame, textvariable=self.sv_match_mode_hint_var, foreground="#555", wraplength=760, justify="left",
         ).pack(fill="x", padx=8, pady=(2, 6))
-        self._sv_on_match_mode_change()
 
-        list_row = ttk.Frame(img_frame)
-        list_row.pack(fill="x")
-        self.sv_image_listbox = tk.Listbox(list_row, height=5, selectmode="extended")
+        self.sv_list_row = ttk.Frame(img_frame)
+        self.sv_image_listbox = tk.Listbox(self.sv_list_row, height=5, selectmode="extended")
         self.sv_image_listbox.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
 
-        img_btn_col = ttk.Frame(list_row)
+        img_btn_col = ttk.Frame(self.sv_list_row)
         img_btn_col.pack(side="left", fill="y", padx=8, pady=8)
         ttk.Button(img_btn_col, text="사진 추가", command=self._sv_add_images).pack(fill="x", pady=2)
         ttk.Button(img_btn_col, text="폴더 추가", command=self._sv_add_image_folder).pack(fill="x", pady=2)
@@ -555,6 +583,17 @@ class AutoEditApp:
         ttk.Button(img_btn_col, text="아래로", command=self._sv_move_down).pack(fill="x", pady=2)
         ttk.Button(img_btn_col, text="선택 제거", command=self._sv_remove_selected).pack(fill="x", pady=2)
         ttk.Button(img_btn_col, text="전체 비우기", command=self._sv_clear_images).pack(fill="x", pady=2)
+
+        self.sv_stock_row = ttk.Frame(img_frame)
+        ttk.Label(self.sv_stock_row, text="Pexels API 키:").pack(side="left", padx=(8, 2), pady=8)
+        self.sv_pexels_key_var = tk.StringVar(value=self._load_pexels_key())
+        ttk.Entry(self.sv_stock_row, textvariable=self.sv_pexels_key_var, width=40, show="•").pack(side="left")
+        ttk.Button(
+            self.sv_stock_row, text="무료 키 발급받기", command=self._sv_open_pexels_signup,
+        ).pack(side="left", padx=6)
+        self.sv_pexels_key_var.trace_add("write", lambda *_a: self._save_pexels_key())
+
+        self._sv_on_match_mode_change()
 
         voice_frame = ttk.LabelFrame(parent, text="3. 목소리")
         voice_frame.pack(fill="x", **pad)
@@ -639,16 +678,29 @@ class AutoEditApp:
 
     # ---------------------------------------------------------------- 사진 목록
     def _sv_on_match_mode_change(self) -> None:
-        if self.sv_match_mode_var.get() == "keyword":
+        mode = self.sv_match_mode_var.get()
+        if mode == "keyword":
             self.sv_match_mode_hint_var.set(
                 "사진 파일명(확장자 제외)이 대본 문장에 그대로 포함되어 있으면, 그 문장이 나올 때 해당 사진이 자동으로 나타납니다. "
                 "예) 파일명을 '동물.jpg'로 하면 → 대본에 \"동물\"이 들어간 문장에서 그 사진이 나옵니다. "
                 "추가 순서는 상관없고, 매칭되는 문장이 없으면 바로 이전에 매칭됐던 사진이 이어서 나옵니다."
             )
+        elif mode == "auto_stock":
+            self.sv_match_mode_hint_var.set(
+                "사진을 직접 준비하지 않아도 됩니다. 대본 문장마다 어울리는 무료 스톡 사진을 자동으로 찾아 넣습니다 "
+                "(Pexels 제공, 실사 사진 위주). 아래에 무료 API 키를 한 번만 입력해두면 다음부터는 자동으로 기억합니다."
+            )
         else:
             self.sv_match_mode_hint_var.set(
                 "사진을 대본 순서와 똑같이 추가해주세요. 순서가 안 맞으면 아래 목록에서 위로/아래로 버튼으로 조정할 수 있습니다."
             )
+
+        if mode == "auto_stock":
+            self.sv_list_row.pack_forget()
+            self.sv_stock_row.pack(fill="x")
+        else:
+            self.sv_stock_row.pack_forget()
+            self.sv_list_row.pack(fill="x")
 
     def _sv_add_images(self) -> None:
         paths = filedialog.askopenfilenames(
@@ -771,7 +823,15 @@ class AutoEditApp:
         if not lines:
             messagebox.showwarning("대본 필요", "대본을 입력해주세요.")
             return
-        if not self.sv_image_paths:
+        match_mode = self.sv_match_mode_var.get()
+        pexels_api_key = self.sv_pexels_key_var.get().strip()
+        if match_mode == "auto_stock":
+            if not pexels_api_key:
+                messagebox.showwarning(
+                    "API 키 필요", "자동 이미지 검색을 쓰려면 Pexels API 키가 필요합니다. '무료 키 발급받기' 버튼으로 발급받아 입력해주세요.",
+                )
+                return
+        elif not self.sv_image_paths:
             messagebox.showwarning("사진 필요", "사진을 하나 이상 추가해주세요.")
             return
         if not self.sv_template_var.get():
@@ -813,7 +873,7 @@ class AutoEditApp:
             target=self._sv_run_pipeline,
             args=(
                 lines, image_paths, template, drafts_folder, draft_name,
-                voice_code, zoom_ratio, transition_name, match_mode, generate_captions,
+                voice_code, zoom_ratio, transition_name, match_mode, pexels_api_key, generate_captions,
             ),
             daemon=True,
         )
@@ -830,6 +890,7 @@ class AutoEditApp:
         zoom_ratio: float,
         transition_name: str | None,
         match_mode: str,
+        pexels_api_key: str,
         generate_captions: bool,
     ) -> None:
         def progress(msg: str) -> None:
@@ -848,6 +909,7 @@ class AutoEditApp:
                 zoom_ratio=zoom_ratio,
                 transition_name=transition_name,
                 match_mode=match_mode,
+                pexels_api_key=pexels_api_key,
                 generate_captions=generate_captions,
                 allow_replace=True,
                 progress_cb=progress,

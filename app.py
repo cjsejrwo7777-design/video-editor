@@ -86,6 +86,58 @@ class AutoEditApp:
 
         return inner
 
+    def _build_resolution_row(self, parent, on_change):
+        """화면 비율(16:9/9:16/커스텀) 선택 UI를 만들고 관련 변수/위젯을 반환한다."""
+        row = ttk.Frame(parent)
+        row.pack(fill="x", padx=8, pady=(0, 8))
+
+        ttk.Label(row, text="화면 비율:").pack(side="left")
+        aspect_var = tk.StringVar(value="16:9")
+        for value, label in [("16:9", "일반 (16:9)"), ("9:16", "쇼츠 (9:16)"), ("custom", "커스텀")]:
+            ttk.Radiobutton(row, text=label, variable=aspect_var, value=value, command=on_change).pack(
+                side="left", padx=(6, 0),
+            )
+
+        ttk.Label(row, text="가로:").pack(side="left", padx=(12, 2))
+        custom_w_var = tk.IntVar(value=1920)
+        custom_w_entry = ttk.Entry(row, textvariable=custom_w_var, width=6)
+        custom_w_entry.pack(side="left")
+
+        ttk.Label(row, text="세로:").pack(side="left", padx=(6, 2))
+        custom_h_var = tk.IntVar(value=1080)
+        custom_h_entry = ttk.Entry(row, textvariable=custom_h_var, width=6)
+        custom_h_entry.pack(side="left")
+
+        return aspect_var, custom_w_var, custom_h_var, custom_w_entry, custom_h_entry
+
+    def _apply_aspect_change(self, aspect_var, custom_w_var, custom_h_var, custom_w_entry, custom_h_entry) -> None:
+        mode = aspect_var.get()
+        if mode == "16:9":
+            custom_w_var.set(1920)
+            custom_h_var.set(1080)
+        elif mode == "9:16":
+            custom_w_var.set(1080)
+            custom_h_var.set(1920)
+        state = "normal" if mode == "custom" else "disabled"
+        custom_w_entry.config(state=state)
+        custom_h_entry.config(state=state)
+
+    def _sync_aspect_from_resolution(self, resolution, aspect_var, custom_w_var, custom_h_var) -> None:
+        w, h = resolution
+        if (w, h) == (1920, 1080):
+            aspect_var.set("16:9")
+        elif (w, h) == (1080, 1920):
+            aspect_var.set("9:16")
+        else:
+            aspect_var.set("custom")
+        custom_w_var.set(w)
+        custom_h_var.set(h)
+
+    def _on_aspect_change(self) -> None:
+        self._apply_aspect_change(
+            self.aspect_var, self.custom_w_var, self.custom_h_var, self.custom_w_entry, self.custom_h_entry,
+        )
+
     def _add_slider(self, parent, label, var, lo, hi, row, fmt="{:.0f}") -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=8, pady=4)
         value_label = ttk.Label(parent, text=fmt.format(var.get()), width=8)
@@ -127,13 +179,20 @@ class AutoEditApp:
         tmpl_frame = ttk.LabelFrame(parent, text="2. 템플릿")
         tmpl_frame.pack(fill="x", **pad)
 
+        tmpl_row = ttk.Frame(tmpl_frame)
+        tmpl_row.pack(fill="x", padx=8, pady=(8, 4))
         self.template_var = tk.StringVar()
-        self.template_combo = ttk.Combobox(tmpl_frame, textvariable=self.template_var, state="readonly", width=22)
-        self.template_combo.pack(side="left", padx=8, pady=8)
+        self.template_combo = ttk.Combobox(tmpl_row, textvariable=self.template_var, state="readonly", width=22)
+        self.template_combo.pack(side="left")
         self.template_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_template_change())
 
         self.template_info_var = tk.StringVar(value="")
-        ttk.Label(tmpl_frame, textvariable=self.template_info_var).pack(side="left", padx=8)
+        ttk.Label(tmpl_row, textvariable=self.template_info_var).pack(side="left", padx=8)
+
+        self.aspect_var, self.custom_w_var, self.custom_h_var, self.custom_w_entry, self.custom_h_entry = (
+            self._build_resolution_row(tmpl_frame, self._on_aspect_change)
+        )
+        self._on_aspect_change()
 
         engine_frame = ttk.LabelFrame(parent, text="3. 출력 방식")
         engine_frame.pack(fill="x", **pad)
@@ -266,6 +325,8 @@ class AutoEditApp:
             self.template_info_var.set(f"(템플릿 로드 실패: {e})")
             return
         self.template_info_var.set(f"{template.resolution[0]}x{template.resolution[1]} · {template.fit}")
+        self._sync_aspect_from_resolution(template.resolution, self.aspect_var, self.custom_w_var, self.custom_h_var)
+        self._on_aspect_change()
         self.thresh_var.set(template.silence.thresh_db)
         self.min_silence_var.set(template.silence.min_silence_ms)
         self.captions_enabled_var.set(template.captions.enabled)
@@ -312,6 +373,7 @@ class AutoEditApp:
     def _build_template(self) -> Template:
         name = self.template_var.get()
         template = Template.load(TEMPLATES_DIR / name)
+        template.resolution = (int(self.custom_w_var.get()), int(self.custom_h_var.get()))
         template.silence.thresh_db = self.thresh_var.get()
         template.silence.min_silence_ms = int(self.min_silence_var.get())
         template.captions.enabled = self.captions_enabled_var.get()
@@ -508,12 +570,19 @@ class AutoEditApp:
 
         tmpl_frame = ttk.LabelFrame(parent, text="4. 템플릿")
         tmpl_frame.pack(fill="x", **pad)
+        tmpl_row = ttk.Frame(tmpl_frame)
+        tmpl_row.pack(fill="x", padx=8, pady=(8, 4))
         self.sv_template_var = tk.StringVar()
-        self.sv_template_combo = ttk.Combobox(tmpl_frame, textvariable=self.sv_template_var, state="readonly", width=22)
-        self.sv_template_combo.pack(side="left", padx=8, pady=8)
+        self.sv_template_combo = ttk.Combobox(tmpl_row, textvariable=self.sv_template_var, state="readonly", width=22)
+        self.sv_template_combo.pack(side="left")
         self.sv_template_combo.bind("<<ComboboxSelected>>", lambda _e: self._sv_on_template_change())
         self.sv_template_info_var = tk.StringVar(value="")
-        ttk.Label(tmpl_frame, textvariable=self.sv_template_info_var).pack(side="left", padx=8)
+        ttk.Label(tmpl_row, textvariable=self.sv_template_info_var).pack(side="left", padx=8)
+
+        self.sv_aspect_var, self.sv_custom_w_var, self.sv_custom_h_var, self.sv_custom_w_entry, self.sv_custom_h_entry = (
+            self._build_resolution_row(tmpl_frame, self._sv_on_aspect_change)
+        )
+        self._sv_on_aspect_change()
 
         motion_frame = ttk.LabelFrame(parent, text="5. 화면 움직임")
         motion_frame.pack(fill="x", **pad)
@@ -647,6 +716,10 @@ class AutoEditApp:
             self.sv_template_info_var.set(f"(템플릿 로드 실패: {e})")
             return
         self.sv_template_info_var.set(f"{template.resolution[0]}x{template.resolution[1]} · {template.fit}")
+        self._sync_aspect_from_resolution(
+            template.resolution, self.sv_aspect_var, self.sv_custom_w_var, self.sv_custom_h_var,
+        )
+        self._sv_on_aspect_change()
         self.sv_captions_enabled_var.set(template.captions.enabled)
         if template.music.enabled and template.music.path:
             self.sv_music_path_var.set(template.music.path)
@@ -669,10 +742,17 @@ class AutoEditApp:
         if self.sv_last_drafts_folder and os.path.isdir(self.sv_last_drafts_folder):
             os.startfile(self.sv_last_drafts_folder)  # noqa: S606
 
+    def _sv_on_aspect_change(self) -> None:
+        self._apply_aspect_change(
+            self.sv_aspect_var, self.sv_custom_w_var, self.sv_custom_h_var,
+            self.sv_custom_w_entry, self.sv_custom_h_entry,
+        )
+
     # ---------------------------------------------------------------- 실행
     def _sv_build_template(self) -> Template:
         name = self.sv_template_var.get()
         template = Template.load(TEMPLATES_DIR / name)
+        template.resolution = (int(self.sv_custom_w_var.get()), int(self.sv_custom_h_var.get()))
         template.captions.enabled = self.sv_captions_enabled_var.get()
         music_path = self.sv_music_path_var.get().strip()
         if music_path:
